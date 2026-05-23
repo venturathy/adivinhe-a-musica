@@ -738,11 +738,13 @@ var prompt='Você é um gerador de perguntas para um jogo musical. O jogador VAI
 
     document.getElementById('clue-text').className='clue-text';
     document.getElementById('clue-text').textContent=roundData.clue;
-    document.getElementById('clue-type').textContent=roundData.clue_type||'Dica da IA';
+    document.getElementById('clue-type').textContent='Sobre o Som';
 
 
     var hintsRow=document.getElementById('hints-row');
     (roundData.hints||[]).forEach(function(h){
+      // Remove qualquer hint de letra inicial
+      if(h.toLowerCase().includes('inicial'))return;
       var p=document.createElement('span');p.className='hint-pill';p.textContent=h;hintsRow.appendChild(p);
     });
 
