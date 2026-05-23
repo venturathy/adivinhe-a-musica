@@ -509,25 +509,58 @@ async function getSpotifyToken(){
 
 var pendingCoverUrl=null; // guarda a capa pra revelar depois
 
-async function fetchSpotifyPreview(query){
-  if(!spotifyToken){fetchItunesPreview(query);return;}
+async function fetchSpotifyPreview(query, expectedSong, expectedArtist){
+  if(!spotifyToken){fetchItunesPreview(query, expectedSong);return;}
   try{
-    var res=await fetch('https://api.spotify.com/v1/search?q='+encodeURIComponent(query)+'&type=track&limit=5&market=BR',{
+    // Busca com artista e título exatos
+    var searchQuery='artist:'+expectedArtist+' track:'+expectedSong;
+    var res=await fetch('https://api.spotify.com/v1/search?q='+encodeURIComponent(searchQuery)+'&type=track&limit=10&market=BR',{
       headers:{'Authorization':'Bearer '+spotifyToken}
     });
     var data=await res.json();
     var tracks=data.tracks&&data.tracks.items||[];
+    
+    // Primeiro tenta achar track que bate com o nome esperado
     var found=null;
-    for(var i=0;i<tracks.length;i++){if(tracks[i].preview_url){found=tracks[i];break;}}
+    var songLower=(expectedSong||'').toLowerCase();
+    var artistLower=(expectedArtist||'').toLowerCase();
+    
+    for(var i=0;i<tracks.length;i++){
+      var t=tracks[i];
+      if(!t.preview_url) continue;
+      var tName=t.name.toLowerCase();
+      var tArtist=(t.artists[0]&&t.artists[0].name||'').toLowerCase();
+      // Verifica se bate com a música esperada
+      if(tName.includes(songLower)||songLower.includes(tName)){
+        found=t; break;
+      }
+    }
+    
+    // Fallback: qualquer track com preview da busca original
+    if(!found){
+      var res2=await fetch('https://api.spotify.com/v1/search?q='+encodeURIComponent(query)+'&type=track&limit=10&market=BR',{
+        headers:{'Authorization':'Bearer '+spotifyToken}
+      });
+      var data2=await res2.json();
+      var tracks2=data2.tracks&&data2.tracks.items||[];
+      for(var j=0;j<tracks2.length;j++){
+        if(!tracks2[j].preview_url) continue;
+        var tName2=tracks2[j].name.toLowerCase();
+        if(tName2.includes(songLower)||songLower.includes(tName2)){
+          found=tracks2[j]; break;
+        }
+      }
+    }
+    
     if(found){
       if(found.album&&found.album.images&&found.album.images[0]){
-        pendingCoverUrl=found.album.images[0].url; // salva mas não mostra
+        pendingCoverUrl=found.album.images[0].url;
       }
       setupAudio(found.preview_url);
     }else{
-      fetchItunesPreview(query);
+      fetchItunesPreview(query, expectedSong);
     }
-  }catch(e){fetchItunesPreview(query);}
+  }catch(e){fetchItunesPreview(query, expectedSong);}
 }
 
 async function fetchItunesPreview(query){
@@ -699,7 +732,9 @@ async function generateRound(){
 
     document.getElementById('player-title').textContent='🎵 Ouça e adivinhe!';
     document.getElementById('player-sub').textContent='Categoria: '+catDescriptions[selectedCategory].split(':')[0];
-    fetchSpotifyPreview(roundData.spotify_search||roundData.artist+' '+roundData.song);
+    // Busca exata: artista + título sem variações
+    var exactQuery=roundData.artist+' '+roundData.song;
+    fetchSpotifyPreview(exactQuery, roundData.song, roundData.artist);
 
     document.getElementById('clue-text').className='clue-text';
     document.getElementById('clue-text').textContent=roundData.clue;
