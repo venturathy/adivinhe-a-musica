@@ -166,6 +166,26 @@ header{text-align:center;margin-bottom:28px;padding-top:20px;}
 
 .replay-btn{display:inline-block;padding:16px 40px;background:var(--accent);color:#0a0a0f;border:none;border-radius:14px;font-family:'Bebas Neue',cursive;font-size:1.4rem;letter-spacing:3px;cursor:pointer;transition:all 0.2s;}
 .replay-btn:hover{box-shadow:0 8px 32px rgba(240,224,64,0.3);transform:translateY(-2px);}
+/* SETUP SCREEN */
+#screen-setup{text-align:center;animation:fadeUp 0.4s ease;}
+.setup-logo{font-family:'Bebas Neue',cursive;font-size:clamp(2.5rem,8vw,4rem);letter-spacing:4px;background:linear-gradient(135deg,var(--accent) 0%,var(--accent2) 60%,var(--accent3) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:4px;}
+.setup-sub{font-size:0.8rem;color:var(--muted);letter-spacing:4px;text-transform:uppercase;margin-bottom:32px;}
+.setup-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:24px 20px;margin-bottom:16px;text-align:left;}
+.setup-card-title{font-family:'Bebas Neue',cursive;font-size:1.1rem;letter-spacing:2px;margin-bottom:4px;display:flex;align-items:center;gap:8px;}
+.setup-card-desc{font-size:0.78rem;color:var(--muted);margin-bottom:16px;line-height:1.6;}
+.setup-input{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.85rem;outline:none;transition:border-color 0.2s;margin-bottom:8px;}
+.setup-input:focus{border-color:var(--accent);}
+.setup-input.ok{border-color:var(--accent3);}
+.setup-input.erro{border-color:var(--accent2);}
+.setup-link{font-size:0.75rem;color:var(--accent);text-decoration:none;display:inline-block;margin-bottom:12px;}
+.setup-save-btn{width:100%;padding:16px;background:var(--accent);color:#0a0a0f;border:none;border-radius:14px;font-family:'Bebas Neue',cursive;font-size:1.4rem;letter-spacing:3px;cursor:pointer;transition:all 0.2s;margin-top:8px;}
+.setup-save-btn:hover{box-shadow:0 8px 32px rgba(240,224,64,0.3);}
+.setup-save-btn:disabled{opacity:0.4;cursor:not-allowed;}
+.setup-status{font-size:0.85rem;margin-top:12px;min-height:20px;text-align:center;}
+.setup-status.ok{color:var(--accent3);}
+.setup-status.erro{color:var(--accent2);}
+.setup-skip{display:block;margin-top:12px;color:var(--muted);font-size:0.8rem;cursor:pointer;text-decoration:underline;text-align:center;}
+
 
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
 @keyframes pulse{0%,100%{opacity:0.5;}50%{opacity:1;}}
@@ -178,6 +198,7 @@ audio{display:none;}
 <header>
   <div class="logo">Acerte!</div>
   <div class="logo-sub">o jogo musical</div>
+  <button onclick="openSetup()" style="margin-top:8px;background:transparent;border:1px solid var(--border);border-radius:99px;padding:4px 14px;color:var(--muted);font-size:0.75px;cursor:pointer;font-size:0.75rem;">⚙️ Configurar chaves</button>
 </header>
 
 <div class="scorebar">
@@ -188,6 +209,29 @@ audio{display:none;}
 </div>
 
 <div class="lives-row" id="lives-row"></div>
+
+<!-- TELA SETUP -->
+<div id="screen-setup" style="display:none;">
+  <div class="setup-logo">Acerte!</div>
+  <div class="setup-sub">configuração inicial</div>
+
+  <div class="setup-card">
+    <div class="setup-card-title">🤖 Groq API</div>
+    <div class="setup-card-desc">Gera as perguntas do jogo. Gratuito e super rápido.<br>Acesse <a class="setup-link" href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> para criar sua chave.</div>
+    <input type="password" class="setup-input" id="input-groq" placeholder="gsk_..." />
+  </div>
+
+  <div class="setup-card">
+    <div class="setup-card-title">🎵 Spotify API</div>
+    <div class="setup-card-desc">Toca o preview das músicas. Opcional — sem ela usa iTunes.<br>Acesse <a class="setup-link" href="https://developer.spotify.com/dashboard" target="_blank">developer.spotify.com/dashboard</a> para pegar as chaves.</div>
+    <input type="password" class="setup-input" id="input-spotify-id" placeholder="Client ID..." />
+    <input type="password" class="setup-input" id="input-spotify-secret" placeholder="Client Secret..." />
+  </div>
+
+  <button class="setup-save-btn" id="setup-save-btn" onclick="saveSetup()">Salvar e Jogar</button>
+  <div class="setup-status" id="setup-status"></div>
+  <span class="setup-skip" onclick="skipSetup()">Pular configuração (sem áudio)</span>
+</div>
 
 <!-- TELA CATEGORIA -->
 <div id="screen-category">
@@ -311,9 +355,9 @@ audio{display:none;}
 
 <script>
 // ── CREDENCIAIS ──────────────────────────────────────────────
-var GROQ_KEY='SUA_GROQ_KEY_AQUI';
-var SPOTIFY_CLIENT_ID='SEU_SPOTIFY_CLIENT_ID';
-var SPOTIFY_CLIENT_SECRET='SEU_SPOTIFY_SECRET';
+var GROQ_KEY=localStorage.getItem('groq_key')||'';
+var SPOTIFY_CLIENT_ID=localStorage.getItem('spotify_id')||'';
+var SPOTIFY_CLIENT_SECRET=localStorage.getItem('spotify_secret')||'';
 
 // ── ESTADO ───────────────────────────────────────────────────
 var selectedCategory=null,currentRound=0,totalRounds=10,score=0,streak=0,bestStreak=0,correctCount=0;
@@ -342,8 +386,66 @@ var catDescriptions={
 };
 
 // ── INIT ─────────────────────────────────────────────────────
+function checkSetup(){
+  var groq=localStorage.getItem('groq_key');
+  if(!groq){
+    document.getElementById('screen-setup').style.display='block';
+    document.getElementById('screen-category').style.display='none';
+  } else {
+    GROQ_KEY=groq;
+    SPOTIFY_CLIENT_ID=localStorage.getItem('spotify_id')||'';
+    SPOTIFY_CLIENT_SECRET=localStorage.getItem('spotify_secret')||'';
+    document.getElementById('screen-setup').style.display='none';
+    document.getElementById('screen-category').style.display='block';
+  }
+  renderLives();
+  updateScorebar();
+}
+
+function saveSetup(){
+  var groq=document.getElementById('input-groq').value.trim();
+  var spId=document.getElementById('input-spotify-id').value.trim();
+  var spSec=document.getElementById('input-spotify-secret').value.trim();
+  var status=document.getElementById('setup-status');
+  if(!groq){
+    status.className='setup-status erro';
+    status.textContent='⚠️ Chave Groq é obrigatória!';
+    document.getElementById('input-groq').classList.add('erro');
+    return;
+  }
+  localStorage.setItem('groq_key', groq);
+  if(spId) localStorage.setItem('spotify_id', spId);
+  if(spSec) localStorage.setItem('spotify_secret', spSec);
+  GROQ_KEY=groq;
+  SPOTIFY_CLIENT_ID=spId;
+  SPOTIFY_CLIENT_SECRET=spSec;
+  status.className='setup-status ok';
+  status.textContent='✅ Salvo! Abrindo o jogo...';
+  setTimeout(function(){
+    document.getElementById('screen-setup').style.display='none';
+    document.getElementById('screen-category').style.display='block';
+  }, 800);
+}
+
+function skipSetup(){
+  document.getElementById('screen-setup').style.display='none';
+  document.getElementById('screen-category').style.display='block';
+}
+
+// Botão de config no canto (pra redefinir chaves)
+function openSetup(){
+  document.getElementById('screen-category').style.display='none';
+  document.getElementById('screen-game').style.display='none';
+  document.getElementById('screen-end').style.display='none';
+  document.getElementById('screen-setup').style.display='block';
+  document.getElementById('input-groq').value=localStorage.getItem('groq_key')||'';
+  document.getElementById('input-spotify-id').value=localStorage.getItem('spotify_id')||'';
+  document.getElementById('input-spotify-secret').value=localStorage.getItem('spotify_secret')||'';
+}
+
 renderLives();
 updateScorebar();
+checkSetup();
 
 function renderLives(){
   var row=document.getElementById('lives-row');
