@@ -744,14 +744,19 @@ async function generateRound(){
     // ETAPA 2 — Gera dica e opções sabendo a música exata
     document.getElementById('clue-text').textContent='Gerando dica...';
 
-    var step2=await callGroq('A música é "'+song+'" de '+artist+' ('+year+').\n\nGere uma dica e opções erradas para um jogo de adivinha. O jogador vai OUVIR a música.\n\nResponda APENAS JSON puro sem markdown:\n{"clue":"2-3 frases descrevendo o SOM: ritmo, instrumentos, energia, voz — SEM mencionar nome nem artista","hints":["Gênero: xxx","Ano: '+year+'"],"wrong":["Música errada 1","Música errada 2","Música errada 3"]}\n\nREGRAS:\n- clue descreve o SOM real da música\n- wrong: 3 músicas DIFERENTES de "'+song+'" mas da mesma categoria/época\n- NUNCA inclua "'+song+'" nas opções erradas\n- Máximo '+cfg.hints+' hint(s)');
+    var step2=await callGroq('A música é "'+song+'" de '+artist+' ('+year+').\n\nGere uma dica e opções erradas para um jogo. O jogador vai OUVIR a música.\n\nResponda APENAS JSON sem markdown:\n{"clue":"2-3 frases sobre o SOM: ritmo, instrumentos, energia, voz. SEM nome nem artista","hints":["Gênero: xxx","Ano: '+year+'"],"wrong":["errada1","errada2","errada3"]}\n\nREGRAS:\n- clue: descreve o SOM real\n- wrong: 3 músicas reais diferentes de \"'+song+'\"\n- NUNCA coloque \"'+song+'\" no wrong\n- hints: SÓ Gênero e Ano, NUNCA letra inicial\n- máximo '+cfg.hints+' item(s) em hints');
 
-    // Monta opções com a correta garantida
+    // Monta opções com a correta garantida (sempre usa o nome da etapa 1)
+    var wrongOpts=(step2.wrong||[]).filter(function(w){
+      return w && w.toLowerCase()!==song.toLowerCase();
+    }).slice(0,3);
+    // Garante 3 opções erradas
+    while(wrongOpts.length<3) wrongOpts.push('Opção '+(wrongOpts.length+1));
     var opts=[
       {text:song,isCorrect:true},
-      {text:step2.wrong[0],isCorrect:false},
-      {text:step2.wrong[1],isCorrect:false},
-      {text:step2.wrong[2],isCorrect:false}
+      {text:wrongOpts[0],isCorrect:false},
+      {text:wrongOpts[1],isCorrect:false},
+      {text:wrongOpts[2],isCorrect:false}
     ];
     // Embaralha
     for(var i=opts.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var tmp=opts[i];opts[i]=opts[j];opts[j]=tmp;}
