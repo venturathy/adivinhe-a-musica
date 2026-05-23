@@ -702,54 +702,70 @@ function nextRound(){
   generateRound();
 }
 
+async function callGroq(prompt){
+  var res=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+GROQ_KEY},
+    body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:600,messages:[{role:'user',content:prompt}]})
+  });
+  var data=await res.json();
+  var raw=data.choices[0].message.content;
+  return JSON.parse(raw.replace(/```json|```/g,'').trim());
+}
+
 async function generateRound(){
   var catDesc=catDescriptions[selectedCategory];
   var cfg=diffConfig[difficulty];
-  var usedList=usedSongs.length>0?'\n\nMÚSICAS JÁ USADAS NESTA PARTIDA (NÃO REPITA NENHUMA):\n'+usedSongs.join(', '):'';
+  var usedList=usedSongs.length>0?'\nMÚSICAS JÁ USADAS (NÃO REPITA): '+usedSongs.join(', '):'';
   var diffs={
-    facil:'dicas claras e diretas, música bem famosa e conhecida pelo grande público',
-    medio:'dica moderada, música famosa mas não óbvia, pode ser b-side ou menos tocada',
-    dificil:'dica vaga e abstrata, música pode ser menos conhecida, não revele gênero nem época na dica'
+    facil:'música muito famosa e popular, conhecida pelo grande público',
+    medio:'música famosa mas não necessariamente a mais tocada do artista',
+    dificil:'música menos óbvia, pode ser b-side ou menos conhecida'
   };
 
-var prompt='Você é um gerador de perguntas para um jogo musical. O jogador VAI OUVIR um trecho de 30 segundos da música.\nCategoria: '+catDesc+'\nDificuldade: '+diffs[difficulty]+usedList+'\n\nGere uma pergunta sobre uma música REAL e FAMOSA. Varie entre eras e subgêneros da categoria.\n\nResponda APENAS JSON puro sem markdown:\n{\"song\":\"Nome exato\",\"artist\":\"Nome exato\",\"year\":2020,\"spotify_search\":\"artista musica\",\"clue_type\":\"Sobre o som\",\"clue\":\"2-3 frases descrevendo o SOM: ritmo, instrumentos, energia, voz. SEM mencionar nome da música nem artista\",\"hints\":[\"Gênero: xxx\",\"Ano: xxxx\"],\"options\":[\"Opção correta\",\"Errada 2\",\"Errada 3\",\"Errada 4\"],\"correct_index\":0}\n\nREGRAS:\n- options[correct_index] é a resposta certa\n- Outras opções são músicas plausíveis mas erradas\n- clue descreve o SOM (batida, instrumentos, ritmo, energia) — NUNCA menciona nome nem artista\n- NUNCA inclua dica com letra inicial da música\n- hints: apenas Gênero e Ano, '+cfg.hints+' hint(s) no máximo\n- Varie o estilo entre rodadas';
-
   try{
-    var res=await fetch('https://api.groq.com/openai/v1/chat/completions',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+GROQ_KEY},
-      body:JSON.stringify({
-        model:'llama-3.3-70b-versatile',
-        max_tokens:800,
-        messages:[{role:'user',content:prompt}]
-      })
-    });
-    var data=await res.json();
-    var raw=data.choices[0].message.content;
-    roundData=JSON.parse(raw.replace(/```json|```/g,'').trim());
-    currentAnswer={song:roundData.song,artist:roundData.artist,year:roundData.year};
-    usedSongs.push(roundData.artist+' - '+roundData.song);
+    // ETAPA 1 — Escolhe a música
+    document.getElementById('clue-text').className='clue-text loading';
+    document.getElementById('clue-text').textContent='Escolhendo música...';
 
+    var step1=await callGroq('Escolha UMA música real e famosa da categoria: '+catDesc+'\nDificuldade: '+diffs[difficulty]+usedList+'\n\nResponda APENAS JSON puro sem markdown:\n{"song":"Nome exato da música","artist":"Nome exato do artista","year":2020}\n\nREGRAS:\n- Música REAL que existe\n- NÃO repita as já usadas\n- Varie entre subgêneros e épocas da categoria');
+
+    var song=step1.song;
+    var artist=step1.artist;
+    var year=step1.year;
+    currentAnswer={song:song,artist:artist,year:year};
+    usedSongs.push(artist+' - '+song);
+
+    // Inicia busca do áudio em paralelo
     document.getElementById('player-title').textContent='🎵 Ouça e adivinhe!';
     document.getElementById('player-sub').textContent='Categoria: '+catDescriptions[selectedCategory].split(':')[0];
-    // Busca exata: artista + título sem variações
-    var exactQuery=roundData.artist+' '+roundData.song;
-    fetchSpotifyPreview(exactQuery, roundData.song, roundData.artist);
+    fetchSpotifyPreview(artist+' '+song, song, artist);
+
+    // ETAPA 2 — Gera dica e opções sabendo a música exata
+    document.getElementById('clue-text').textContent='Gerando dica...';
+
+    var step2=await callGroq('A música é "'+song+'" de '+artist+' ('+year+').\n\nGere uma dica e opções erradas para um jogo de adivinha. O jogador vai OUVIR a música.\n\nResponda APENAS JSON puro sem markdown:\n{"clue":"2-3 frases descrevendo o SOM: ritmo, instrumentos, energia, voz — SEM mencionar nome nem artista","hints":["Gênero: xxx","Ano: '+year+'"],"wrong":["Música errada 1","Música errada 2","Música errada 3"]}\n\nREGRAS:\n- clue descreve o SOM real da música\n- wrong: 3 músicas DIFERENTES de "'+song+'" mas da mesma categoria/época\n- NUNCA inclua "'+song+'" nas opções erradas\n- Máximo '+cfg.hints+' hint(s)');
+
+    // Monta opções com a correta garantida
+    var opts=[
+      {text:song,isCorrect:true},
+      {text:step2.wrong[0],isCorrect:false},
+      {text:step2.wrong[1],isCorrect:false},
+      {text:step2.wrong[2],isCorrect:false}
+    ];
+    // Embaralha
+    for(var i=opts.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var tmp=opts[i];opts[i]=opts[j];opts[j]=tmp;}
 
     document.getElementById('clue-text').className='clue-text';
-    document.getElementById('clue-text').textContent=roundData.clue;
+    document.getElementById('clue-text').textContent=step2.clue;
     document.getElementById('clue-type').textContent='Sobre o Som';
 
-
     var hintsRow=document.getElementById('hints-row');
-    (roundData.hints||[]).forEach(function(h){
-      // Remove qualquer hint de letra inicial
+    (step2.hints||[]).slice(0,cfg.hints).forEach(function(h){
       if(h.toLowerCase().includes('inicial'))return;
       var p=document.createElement('span');p.className='hint-pill';p.textContent=h;hintsRow.appendChild(p);
     });
 
-    var opts=roundData.options.map(function(o,i){return{text:o,isCorrect:i===roundData.correct_index};});
-    for(var i=opts.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var tmp=opts[i];opts[i]=opts[j];opts[j]=tmp;}
     var choicesEl=document.getElementById('choices');
     var letters=['A','B','C','D'];
     opts.forEach(function(opt,i){
@@ -764,9 +780,10 @@ var prompt='Você é um gerador de perguntas para um jogo musical. O jogador VAI
   }catch(e){
     console.error('Groq erro:',e);
     document.getElementById('clue-text').className='clue-text';
-    document.getElementById('clue-text').textContent='Erro de conexão. Verifique sua internet e aguarde...';
+    document.getElementById('clue-text').textContent='Erro de conexão. Tentando novamente...';
     setTimeout(generateRound,3000);
   }
+}
 }
 
 // ── RESPOSTA ─────────────────────────────────────────────────
